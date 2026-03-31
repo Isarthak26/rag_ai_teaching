@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAG Teaching Assistant</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#f0f2f5;--surface:#fff;--surface2:#f8f9fa;--border:#e0e0e0;
+    --accent:#1971c2;--accent-d:#1864ab;--accent-l:#e7f5ff;
+    --green:#2f9e44;--green-l:#ebfbee;--red:#c92a2a;--red-l:#fff5f5;
+    --amber:#e67700;--amber-l:#fff9db;--purple:#6741d9;--purple-l:#f3f0ff;
+    --text:#1a1a2e;--text2:#495057;--text3:#868e96;
+    --r:10px;--r-sm:6px;
+  }
+  body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column}
+  
+  /* HEADER */
+  header{background:linear-gradient(135deg,#1864ab,#1c7ed6);color:#fff;padding:16px 24px;display:flex;align-items:center;gap:14px;box-shadow:0 2px 8px rgba(0,0,0,0.15)}
+  .logo{width:42px;height:42px;background:rgba(255,255,255,0.2);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+  header h1{font-size:17px;font-weight:600}
+  header p{font-size:12px;opacity:.75;margin-top:2px}
+  .api-badge{margin-left:auto;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);border-radius:20px;padding:4px 12px;font-size:11px;cursor:pointer;transition:background .15s}
+  .api-badge:hover{background:rgba(255,255,255,0.25)}
+
+  /* LAYOUT */
+  .container{display:grid;grid-template-columns:300px 1fr;flex:1;gap:0;overflow:hidden;height:calc(100vh - 74px)}
+
+  /* SIDEBAR */
+  aside{background:var(--surface);border-right:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column;gap:0}
+  .section{padding:16px;border-bottom:1px solid var(--border)}
+  .section-title{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px}
+
+  /* SOURCE TABS */
+  .src-tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:12px}
+  .src-tab{flex:1;padding:7px 4px;font-size:12px;font-weight:600;text-align:center;cursor:pointer;color:var(--text3);border-bottom:2px solid transparent;transition:all .15s}
+  .src-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+  .src-panel{display:none}.src-panel.active{display:block}
+
+  /* DROP ZONE */
+  .dropzone{border:2px dashed var(--border);border-radius:var(--r);padding:20px 12px;text-align:center;cursor:pointer;transition:all .2s;background:var(--surface2);position:relative}
+  .dropzone:hover,.dropzone.drag-over{border-color:var(--accent);background:var(--accent-l)}
+  .dropzone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+  .dropzone-icon{font-size:28px;margin-bottom:6px}
+  .dropzone-text{font-size:13px;font-weight:600;color:var(--text2)}
+  .dropzone-sub{font-size:11px;color:var(--text3);margin-top:3px}
+  .file-selected{background:var(--green-l);border-color:#8ce99a;border-style:solid}
+  .file-selected .dropzone-text{color:var(--green)}
+
+  /* PROGRESS BAR */
+  .progress-wrap{height:4px;background:var(--border);border-radius:4px;margin-top:8px;overflow:hidden;display:none}
+  .progress-bar{height:100%;background:var(--accent);border-radius:4px;width:0%;transition:width .3s}
+
+  /* INGEST FORM */
+  .url-input{width:100%;border:1.5px solid var(--border);border-radius:var(--r-sm);padding:9px 11px;font-size:13px;font-family:inherit;color:var(--text);background:var(--surface2);outline:none;transition:border-color .15s}
+  .url-input:focus{border-color:var(--accent)}
+  .btn{width:100%;margin-top:8px;padding:10px;border:none;border-radius:var(--r-sm);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:6px}
+  .btn-primary{background:var(--accent);color:#fff}
+  .btn-primary:hover{background:var(--accent-d)}
+  .btn-primary:disabled{opacity:.55;cursor:not-allowed}
+
+  /* STATUS CARD */
+  .status-card{border-radius:var(--r-sm);padding:10px 12px;font-size:12px;border:1px solid;margin-top:10px;display:none}
+  .status-pending{background:var(--amber-l);border-color:#ffc078;color:var(--amber)}
+  .status-processing{background:var(--accent-l);border-color:#74c0fc;color:var(--accent-d)}
+  .status-done{background:var(--green-l);border-color:#8ce99a;color:var(--green)}
+  .status-error{background:var(--red-l);border-color:#ffa8a8;color:var(--red)}
+  .status-msg{font-weight:500;margin-bottom:3px}
+  .status-sub{opacity:.8;font-size:11px}
+
+  /* SESSION LIST */
+  .session-item{padding:9px 10px;border-radius:var(--r-sm);cursor:pointer;font-size:13px;border:1px solid transparent;margin-bottom:5px;transition:all .15s}
+  .session-item:hover{background:var(--surface2)}
+  .session-item.active{background:var(--accent-l);border-color:#a5d8ff;color:var(--accent-d)}
+  .session-title{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .session-meta{font-size:11px;color:var(--text3);margin-top:2px}
+
+  /* CONFIG */
+  .config-row{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
+  .config-row label{font-size:12px;color:var(--text2);font-weight:500}
+  .config-row select{padding:7px 9px;border:1px solid var(--border);border-radius:var(--r-sm);font-size:12px;background:var(--surface);color:var(--text);outline:none}
+  .config-row input[type=range]{width:100%}
+  .config-val{font-size:12px;color:var(--accent);font-weight:600}
+
+  /* MAIN CHAT */
+  main{display:flex;flex-direction:column;overflow:hidden}
+  .chat-header{padding:12px 20px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;align-items:center;gap:10px;min-height:52px}
+  .chat-title{font-weight:600;font-size:14px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pill{font-size:11px;padding:3px 9px;border-radius:20px;font-weight:600;white-space:nowrap}
+  .pill-green{background:var(--green-l);color:var(--green)}
+  .pill-gray{background:var(--surface2);color:var(--text3);border:1px solid var(--border)}
+
+  .messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px}
+  .msg{display:flex;gap:10px;max-width:88%}
+  .msg.user{align-self:flex-end;flex-direction:row-reverse}
+  .avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;font-weight:700}
+  .msg.assistant .avatar{background:var(--accent-l);color:var(--accent)}
+  .msg.user .avatar{background:var(--purple-l);color:var(--purple)}
+  .bubble{padding:10px 14px;border-radius:14px;font-size:14px;line-height:1.6}
+  .msg.assistant .bubble{background:var(--surface);border:1px solid var(--border);border-top-left-radius:3px}
+  .msg.user .bubble{background:var(--accent);color:#fff;border-top-right-radius:3px}
+  .msg-meta{font-size:11px;color:var(--text3);margin-top:4px;padding:0 4px}
+
+  /* CHUNKS */
+  .chunks{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+  .chunk{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 11px;font-size:12px}
+  .chunk-top{display:flex;align-items:center;gap:6px;margin-bottom:5px;flex-wrap:wrap}
+  .chunk-text{color:var(--text2);line-height:1.45}
+  a.ts-link{font-size:11px;background:var(--accent-l);color:var(--accent-d);border-radius:10px;padding:2px 8px;text-decoration:none;font-weight:600}
+  a.ts-link:hover{background:#d0ebff}
+  .score-badge{font-size:10px;padding:2px 7px;border-radius:10px;font-weight:600}
+  .score-hi{background:var(--green-l);color:var(--green)}
+  .score-mid{background:var(--amber-l);color:var(--amber)}
+
+  /* INPUT */
+  .input-area{padding:12px 20px;border-top:1px solid var(--border);background:var(--surface)}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+  .chip{font-size:12px;border:1px solid var(--border);border-radius:20px;padding:4px 10px;cursor:pointer;color:var(--text2);background:var(--surface);transition:all .15s;white-space:nowrap}
+  .chip:hover{background:var(--accent-l);border-color:#74c0fc;color:var(--accent-d)}
+  .input-row{display:flex;gap:8px;align-items:flex-end}
+  textarea#q{flex:1;border:1.5px solid var(--border);border-radius:22px;padding:10px 16px;font-size:14px;font-family:inherit;resize:none;outline:none;line-height:1.4;min-height:44px;max-height:110px;color:var(--text);background:var(--surface2);transition:border-color .15s}
+  textarea#q:focus{border-color:var(--accent)}
+  .send{width:44px;height:44px;border-radius:50%;background:var(--accent);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s,transform .1s}
+  .send:hover{background:var(--accent-d)}
+  .send:active{transform:scale(.95)}
+  .send:disabled{opacity:.5;cursor:not-allowed}
+  .send svg{width:18px;height:18px;fill:#fff}
+
+  /* EMPTY STATE */
+  .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:12px;color:var(--text3);text-align:center;padding:20px}
+  .empty-icon{font-size:48px;opacity:.35}
+  .empty-text{font-size:14px;max-width:280px;line-height:1.6}
+
+  /* THINKING */
+  .thinking{display:flex;gap:5px;align-items:center;padding:4px 0}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--text3);animation:bounce 1.2s infinite}
+  .dot:nth-child(2){animation-delay:.2s}.dot:nth-child(3){animation-delay:.4s}
+  @keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-7px)}}
+
+  /* API KEY MODAL */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:1000;display:none}
+  .modal{background:var(--surface);border-radius:var(--r);padding:24px;width:420px;max-width:90vw}
+  .modal h2{font-size:16px;font-weight:600;margin-bottom:6px}
+  .modal p{font-size:13px;color:var(--text2);margin-bottom:14px;line-height:1.5}
+  .modal input{width:100%;border:1.5px solid var(--border);border-radius:var(--r-sm);padding:9px 12px;font-size:13px;font-family:inherit;outline:none;margin-bottom:12px}
+  .modal input:focus{border-color:var(--accent)}
+  .modal-btns{display:flex;gap:8px;justify-content:flex-end}
+  .btn-sm{padding:7px 16px;border:1px solid var(--border);border-radius:var(--r-sm);font-size:13px;cursor:pointer;background:var(--surface)}
+  .btn-sm-primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+  ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🎓</div>
+  <div>
+    <h1>RAG Teaching Assistant</h1>
+    <p>YouTube Video Q&A — SIT Special Topics Project</p>
+  </div>
+  <div class="api-badge" onclick="showModal()">⚙ API Config</div>
+</header>
+
+<div class="container">
+  <!-- SIDEBAR -->
+  <aside>
+    <!-- Ingest -->
+    <div class="section">
+      <div class="section-title">Add Lecture</div>
+
+      <!-- Source tabs -->
+      <div class="src-tabs">
+        <div class="src-tab active" onclick="switchSrc('yt',this)">▶ YouTube</div>
+        <div class="src-tab" onclick="switchSrc('upload',this)">⬆ Upload File</div>
+      </div>
+
+      <!-- YouTube panel -->
+      <div class="src-panel active" id="src-yt">
+        <input class="url-input" id="yt-url" type="url" placeholder="https://www.youtube.com/watch?v=..." />
+        <button class="btn btn-primary" id="ingest-btn" onclick="startIngest()">
+          <span>⬇</span> Download & Process
+        </button>
+      </div>
+
+      <!-- Upload panel -->
+      <div class="src-panel" id="src-upload">
+        <div class="dropzone" id="dropzone" ondragover="onDragOver(event)" ondragleave="onDragLeave()" ondrop="onDrop(event)">
+          <input type="file" id="file-input" accept=".mp4,.mkv,.avi,.mov,.webm,.mp3,.wav,.m4a,.ogg" onchange="onFileSelected(this)">
+          <div class="dropzone-icon" id="dz-icon">📁</div>
+          <div class="dropzone-text" id="dz-text">Drop video/audio here</div>
+          <div class="dropzone-sub" id="dz-sub">or click to browse — mp4, mkv, mp3, wav, m4a…</div>
+        </div>
+        <div class="progress-wrap" id="upload-progress-wrap">
+          <div class="progress-bar" id="upload-progress-bar"></div>
+        </div>
+        <button class="btn btn-primary" id="upload-btn" onclick="startUpload()" disabled>
+          <span>⬆</span> Upload & Process
+        </button>
+      </div>
+
+      <div class="status-card" id="status-card">
+        <div class="status-msg" id="status-msg"></div>
+        <div class="status-sub" id="status-sub"></div>
+      </div>
+    </div>
+
+    <!-- Sessions -->
+    <div class="section" style="flex:1">
+      <div class="section-title">Indexed Videos</div>
+      <div id="session-list">
+        <div style="font-size:12px;color:var(--text3)">No videos indexed yet. Paste a YouTube URL above.</div>
+      </div>
+    </div>
+
+    <!-- Config -->
+    <div class="section">
+      <div class="section-title">Settings</div>
+      <div class="config-row">
+        <label>LLM Model</label>
+        <select id="llm-model">
+          <option value="gpt-4o">GPT-4o</option>
+          <option value="gpt-3.5-turbo">GPT-3.5-Turbo</option>
+          <option value="gpt-4-turbo">GPT-4-Turbo</option>
+        </select>
+      </div>
+      <div class="config-row">
+        <label>Top-k chunks: <span class="config-val" id="topk-label">3</span></label>
+        <input type="range" min="1" max="6" value="3" id="topk" oninput="document.getElementById('topk-label').textContent=this.value">
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main>
+    <div class="chat-header">
+      <span style="font-size:20px">💬</span>
+      <span class="chat-title" id="chat-title">Select or ingest a video to start chatting</span>
+      <span class="pill pill-gray" id="chunk-pill" style="display:none"></span>
+    </div>
+
+    <div class="messages" id="messages">
+      <div class="empty">
+        <div class="empty-icon">📹</div>
+        <div class="empty-text">Paste a YouTube lecture URL on the left and click "Download & Process" to get started.</div>
+      </div>
+    </div>
+
+    <div class="input-area">
+      <div class="chips" id="chips">
+        <div class="chip" onclick="useChip(this)">What is the main topic of this lecture?</div>
+        <div class="chip" onclick="useChip(this)">Summarize the key points</div>
+        <div class="chip" onclick="useChip(this)">What examples were given?</div>
+        <div class="chip" onclick="useChip(this)">What are the limitations discussed?</div>
+      </div>
+      <div class="input-row">
+        <textarea id="q" rows="1" placeholder="Ask a question about the lecture..." onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+        <button class="send" id="send-btn" onclick="sendQuestion()" disabled>
+          <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+        </button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- API KEY MODAL -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h2>API Configuration</h2>
+    <p>The backend reads your OpenAI key from the <code>OPENAI_API_KEY</code> environment variable. You can also set the backend URL if running on a different port.</p>
+    <label style="font-size:12px;font-weight:500;display:block;margin-bottom:4px">Backend URL</label>
+    <input id="api-url" type="url" value="http://localhost:8000" placeholder="http://localhost:8000">
+    <div class="modal-btns">
+      <button class="btn-sm" onclick="hideModal()">Cancel</button>
+      <button class="btn-sm btn-sm-primary" onclick="saveConfig()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let BASE_URL = localStorage.getItem('rag_base_url') || 'http://localhost:8000';
+let activeSession = null;
+let pollInterval = null;
+
+// ── Ingest ────────────────────────────────────────────────────────────────────
+async function startIngest() {
+  const url = document.getElementById('yt-url').value.trim();
+  if (!url) return alert('Please enter a YouTube URL');
+  if (!url.includes('youtube.com') && !url.includes('youtu.be')) {
+    return alert('Please enter a valid YouTube URL');
+  }
+
+  setStatus('pending', 'Submitting job...', '');
+  document.getElementById('ingest-btn').disabled = true;
+
+  try {
+    const res = await fetch(`${BASE_URL}/ingest`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ youtube_url: url })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Failed to start ingestion');
+
+    setStatus('processing', 'Processing...', 'Downloading audio...');
+    pollStatus(data.job_id);
+  } catch (e) {
+    setStatus('error', 'Error', e.message);
+    document.getElementById('ingest-btn').disabled = false;
+  }
+}
+
+function pollStatus(jobId) {
+  clearInterval(pollInterval);
+  pollInterval = setInterval(async () => {
+    try {
+      const res = await fetch(`${BASE_URL}/status/${jobId}`);
+      const data = await res.json();
+      const sub = data.video_title ? `📹 ${data.video_title}` : data.message;
+      setStatus(data.status, data.message, sub);
+
+      if (data.status === 'done') {
+        clearInterval(pollInterval);
+        document.getElementById('ingest-btn').disabled = false;
+        addSession(data.session_id, data.video_title, data.chunk_count);
+        setActiveSession(data.session_id, data.video_title, data.chunk_count);
+      } else if (data.status === 'error') {
+        clearInterval(pollInterval);
+        document.getElementById('ingest-btn').disabled = false;
+      }
+    } catch (e) {
+      // backend may be loading — keep polling
+    }
+  }, 2000);
+}
+
+// ── Sessions ──────────────────────────────────────────────────────────────────
+const sessions = {};
+
+function addSession(id, title, chunks) {
+  sessions[id] = { title, chunks };
+  renderSessions();
+}
+
+function renderSessions() {
+  const el = document.getElementById('session-list');
+  const keys = Object.keys(sessions);
+  if (keys.length === 0) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3)">No videos indexed yet.</div>';
+    return;
+  }
+  el.innerHTML = keys.map(id => `
+    <div class="session-item ${id===activeSession?'active':''}" onclick="setActiveSession('${id}','${escHtml(sessions[id].title)}',${sessions[id].chunks})">
+      <div class="session-title">${escHtml(sessions[id].title)}</div>
+      <div class="session-meta">${sessions[id].chunks} chunks • Click to chat</div>
+    </div>
+  `).join('');
+}
+
+function setActiveSession(id, title, chunks) {
+  activeSession = id;
+  document.getElementById('chat-title').textContent = title;
+  const pill = document.getElementById('chunk-pill');
+  pill.textContent = `${chunks} chunks`;
+  pill.style.display = 'inline';
+  pill.className = 'pill pill-green';
+  document.getElementById('send-btn').disabled = false;
+
+  const msgs = document.getElementById('messages');
+  msgs.innerHTML = `
+    <div class="msg assistant">
+      <div class="avatar">🎓</div>
+      <div>
+        <div class="bubble">I've processed "<strong>${escHtml(title)}</strong>" and indexed it into the vector store. Ask me anything about this lecture — I'll retrieve the relevant segments and answer based on what was actually said, with timestamps so you can jump to that part of the video!</div>
+        <div class="msg-meta">RAG-TA • ${chunks} chunks indexed • ready</div>
+      </div>
+    </div>
+  `;
+  renderSessions();
+}
+
+// ── Q&A ───────────────────────────────────────────────────────────────────────
+async function sendQuestion() {
+  const input = document.getElementById('q');
+  const question = input.value.trim();
+  if (!question || !activeSession) return;
+
+  input.value = '';
+  input.style.height = 'auto';
+
+  const msgs = document.getElementById('messages');
+  appendMsg('user', question);
+
+  // Thinking
+  const thinkId = 'think-' + Date.now();
+  msgs.insertAdjacentHTML('beforeend', `
+    <div class="msg assistant" id="${thinkId}">
+      <div class="avatar">🎓</div>
+      <div>
+        <div class="bubble">
+          <div class="thinking"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+          <div style="font-size:11px;color:var(--text3);margin-top:4px">Searching vector store...</div>
+        </div>
+      </div>
+    </div>
+  `);
+  msgs.scrollTop = msgs.scrollHeight;
+  document.getElementById('send-btn').disabled = true;
+
+  try {
+    const topK = parseInt(document.getElementById('topk').value);
+    const res = await fetch(`${BASE_URL}/ask`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: activeSession, question, top_k: topK })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Failed to get answer');
+
+    document.getElementById(thinkId)?.remove();
+
+    const chunksHtml = data.retrieved_chunks.map((c, i) => {
+      const score = c.rerank_score;
+      const scoreClass = score > 0.5 ? 'score-hi' : 'score-mid';
+      const tsLink = c.youtube_link
+        ? `<a class="ts-link" href="${c.youtube_link}" target="_blank">⏱ ${c.timestamp}</a>`
+        : `<span class="ts-link">⏱ ${c.timestamp}</span>`;
+      return `
+        <div class="chunk">
+          <div class="chunk-top">
+            <span style="font-size:10px;font-weight:700;color:var(--text3)">#${i+1}</span>
+            ${tsLink}
+            <span class="score-badge ${scoreClass}">Score: ${score.toFixed(2)}</span>
+          </div>
+          <div class="chunk-text">${escHtml(c.text.substring(0, 180))}${c.text.length > 180 ? '...' : ''}</div>
+        </div>
+      `;
+    }).join('');
+
+    const fullHtml = `${formatMd(data.answer)}<div class="chunks"><div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Retrieved chunks (${data.chunks_retrieved})</div>${chunksHtml}</div>`;
+    appendMsg('assistant', fullHtml, true, `${data.model_used} • ${data.chunks_retrieved} chunks retrieved`);
+  } catch (e) {
+    document.getElementById(thinkId)?.remove();
+    appendMsg('assistant', `⚠ Error: ${e.message}. Make sure the backend is running at ${BASE_URL}`);
+  }
+
+  document.getElementById('send-btn').disabled = false;
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function appendMsg(role, content, isHtml=false, meta='') {
+  const msgs = document.getElementById('messages');
+  const avatar = role === 'user' ? 'U' : '🎓';
+  const bubbleContent = isHtml ? content : escHtml(content);
+  msgs.insertAdjacentHTML('beforeend', `
+    <div class="msg ${role}">
+      <div class="avatar">${avatar}</div>
+      <div>
+        <div class="bubble">${bubbleContent}</div>
+        ${meta ? `<div class="msg-meta">${meta}</div>` : ''}
+      </div>
+    </div>
+  `);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function setStatus(type, msg, sub) {
+  const card = document.getElementById('status-card');
+  card.className = `status-card status-${type}`;
+  card.style.display = 'block';
+  document.getElementById('status-msg').textContent = msg;
+  document.getElementById('status-sub').textContent = sub;
+}
+
+function formatMd(text) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n\n/g, '<br><br>')
+    .replace(/\n/g, '<br>');
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Source tab switching ──────────────────────────────────────────────────────
+function switchSrc(name, el) {
+  document.querySelectorAll('.src-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.src-panel').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('src-' + name).classList.add('active');
+}
+
+// ── File drag & drop / selection ──────────────────────────────────────────────
+let selectedFile = null;
+
+function onFileSelected(input) {
+  if (input.files && input.files[0]) { selectedFile = input.files[0]; _showFileReady(selectedFile); }
+}
+function onDragOver(e) { e.preventDefault(); document.getElementById('dropzone').classList.add('drag-over'); }
+function onDragLeave() { document.getElementById('dropzone').classList.remove('drag-over'); }
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropzone').classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) { selectedFile = f; _showFileReady(f); }
+}
+
+function _showFileReady(file) {
+  const dz = document.getElementById('dropzone');
+  dz.classList.add('file-selected');
+  document.getElementById('dz-icon').textContent = '✅';
+  document.getElementById('dz-text').textContent = file.name;
+  document.getElementById('dz-sub').textContent = `${(file.size/1024/1024).toFixed(1)} MB — ready to upload`;
+  document.getElementById('upload-btn').disabled = false;
+}
+
+// ── File upload with progress ─────────────────────────────────────────────────
+async function startUpload() {
+  if (!selectedFile) return;
+  document.getElementById('upload-btn').disabled = true;
+  setStatus('processing', 'Uploading...', selectedFile.name);
+
+  const wrap = document.getElementById('upload-progress-wrap');
+  const bar  = document.getElementById('upload-progress-bar');
+  wrap.style.display = 'block'; bar.style.width = '0%';
+
+  const fd = new FormData();
+  fd.append('file', selectedFile);
+
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', `${BASE_URL}/upload`);
+
+  xhr.upload.onprogress = (e) => {
+    if (e.lengthComputable) {
+      const pct = Math.round(e.loaded / e.total * 100);
+      bar.style.width = pct + '%';
+      setStatus('processing', `Uploading... ${pct}%`, selectedFile.name);
+    }
+  };
+
+  xhr.onload = () => {
+    wrap.style.display = 'none';
+    if (xhr.status === 200) {
+      const data = JSON.parse(xhr.responseText);
+      setStatus('processing', 'Processing audio...', 'Whisper is transcribing your lecture...');
+      pollStatus(data.job_id);
+    } else {
+      let msg = 'Upload failed';
+      try { msg = JSON.parse(xhr.responseText).detail; } catch(e) {}
+      setStatus('error', 'Upload failed', msg);
+      document.getElementById('upload-btn').disabled = false;
+    }
+  };
+
+  xhr.onerror = () => {
+    wrap.style.display = 'none';
+    setStatus('error', 'Network error', `Could not reach backend at ${BASE_URL}`);
+    document.getElementById('upload-btn').disabled = false;
+  };
+
+  xhr.send(fd);
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuestion(); }
+}
+function autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,110)+'px'; }
+function useChip(el) { document.getElementById('q').value = el.textContent; document.getElementById('q').focus(); }
+function showModal() { document.getElementById('modal').style.display='flex'; document.getElementById('api-url').value=BASE_URL; }
+function hideModal() { document.getElementById('modal').style.display='none'; }
+function saveConfig() { BASE_URL = document.getElementById('api-url').value.trim(); localStorage.setItem('rag_base_url', BASE_URL); hideModal(); }
+</script>
+</body>
+</html>
