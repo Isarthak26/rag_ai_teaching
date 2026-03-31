@@ -1,0 +1,5 @@
+# Requirements for the backend
+
+# Remove openai and add groq
+
+groq
